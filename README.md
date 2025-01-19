@@ -41,3 +41,9 @@ First 5 pairs:
 `````
 
 ## Research
+
+- Stuber Lab - University of Washington
+
+We researched the transcriptional dynamics within the Medial Preoptic Area (MPOA) in pubescent mice, with the goal of clarifying the molecular underpinnings behind adolescent brain development. We determined, using scRNAseq tecnniques, that selective deletion of the Esr1 gene was found to inhibit normal progression of puberty. Further work on regulatory mechanisms will give us a better understanding of how neural plasticity is affected during puberty.
+
+![Mouse Brain](/Images/Mouse_brain.png)
