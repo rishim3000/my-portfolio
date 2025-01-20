@@ -1,4 +1,4 @@
-# Rishi Mukundan - Master's Student 
+# Master's Student 
 
 #### Technical Skills: Python, R, SQL, STATA
 
