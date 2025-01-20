@@ -44,6 +44,13 @@ First 5 pairs:
 
 - Stuber Lab - University of Washington
 
+[Publication](https://www.biorxiv.org/content/10.1101/2021.09.02.458782v1)
+
 We researched the transcriptional dynamics within the Medial Preoptic Area (MPOA) in pubescent mice, with the goal of clarifying the molecular underpinnings behind adolescent brain development. We determined, using scRNAseq tecnniques, that selective deletion of the Esr1 gene was found to inhibit normal progression of puberty. Further work on regulatory mechanisms will give us a better understanding of how neural plasticity is affected during puberty.
 
 ![Mouse Brain](/Images/Mouse_brain.png)
+
+- Dravid Lab - Creighton University
+
+We aimed to understand the unique function of the GluD1 protein in maintaining neural connectivity, which allowed for higher cognitive function. We constructed mutant GluD1 vectors, inserting mutations that affected the binding interface. We then transfected these vectors into HEK cells, producing our mutant protein samples. Binding efficacy was then analyzed using SPR. This work could lead to important advancements in drug discovery, for neurodegenerative disorders such as Alzheimer's.
+
