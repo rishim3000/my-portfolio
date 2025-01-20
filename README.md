@@ -54,3 +54,5 @@ We researched the transcriptional dynamics within the Medial Preoptic Area (MPOA
 
 We aimed to understand the unique function of the GluD1 protein in maintaining neural connectivity, which allowed for higher cognitive function. We constructed mutant GluD1 vectors, inserting mutations that affected the binding interface. We then transfected these vectors into HEK cells, producing our mutant protein samples. Binding efficacy was then analyzed using SPR. This work could lead to important advancements in drug discovery, for neurodegenerative disorders such as Alzheimer's.
 
+![GluD1]
+
