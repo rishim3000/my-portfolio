@@ -39,6 +39,17 @@ First 5 pairs:
 4. 28764 - 126471
 5. 42198 - 122609
 `````
+###Tennis Match Outcome Prediction using Machine Learning Techniques
+
+Can we leverage machine learning tools to predict who wins a tennis match, utilizing performance metrics?
+
+Developed a predictive model in **R** using Random Forest and XGBoost models based on historical match statistics.
+
+Optimized computational efficiency while emphasizing performance, by experimenting with model complexity.
+
+Achieved a peak accuracy of **80%**, with similar sensitivity and specificity values.
+
+![Tennis Data](/Tennis_Predictions/images/1st_ace_scatter.png)
 
 ## Research
 
