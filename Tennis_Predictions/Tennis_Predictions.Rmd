@@ -1,0 +1,355 @@
+---
+title: "Leveraging Machine Learning Techniques for Tennis Predictions"
+output: html_document
+date: "2025-03-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Binary Classification Model - ATP Tennis 2024
+
+How well can we predict match outcome, based on key serving statistics? This dataset consists of 3076 ATP matches played in 2024, along with the statistics of the winner and loser. Examples of statistics: 1st/2nd serve points won, Double Faults, Match length, Break points saved/faced, as well as player-specific demographics (height, age, handedness, rankings. etc.)
+
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+data <- read.csv('atp_matches_2024.csv')
+
+```
+
+### Data Long Conversion
+
+Since each row contains stats for both winner and loser, we need to transform data so that each row has statistics for one player, along with match outcome (represented as a binary value).
+
+
+```{r}
+long_data <- data |>
+  dplyr::select(
+    tourney_name, surface,tourney_level, tourney_date,
+    winner_id, winner_seed, winner_entry, winner_name, winner_hand, winner_ht,
+    winner_ioc, winner_age, loser_id, loser_seed, loser_entry, loser_name, loser_hand,
+    loser_ht, loser_ioc, loser_age, score,best_of, round, minutes,
+    w_ace, w_df, w_svpt, w_1stIn, w_1stWon, w_2ndWon, w_SvGms, w_bpSaved, w_bpFaced,
+    l_ace, l_df, l_svpt, l_1stIn, l_1stWon, l_2ndWon, l_SvGms, l_bpSaved,l_bpFaced,
+    winner_rank, winner_rank_points, loser_rank, loser_rank_points
+    
+  ) |>
+  pivot_longer(
+    cols = c(winner_id, loser_id),
+    names_to = 'player_type', #stores whether the player won or lost
+    values_to = 'player_id' #each match is recorded twice - once for winner and once for loser
+  ) |>
+  mutate(
+    #player demographics
+    player_name = ifelse(player_type == 'winner_id', winner_name, loser_name),#separates relevant stats based on winner or loser of match
+    player_hand = ifelse(player_type == "winner_id", winner_hand, loser_hand),
+    player_ht = ifelse(player_type == "winner_id", winner_ht, loser_ht),
+    player_age = ifelse(player_type == "winner_id", winner_age, loser_age),
+    player_country = ifelse(player_type == "winner_id", winner_ioc , loser_ioc),
+    
+    #match stats
+    player_ace = ifelse(player_type == "winner_id", w_ace, l_ace), #ace count
+    player_df = ifelse(player_type == "winner_id", w_df, l_df), #double fault count
+    player_svpt = ifelse(player_type == "winner_id", w_svpt, l_svpt), #serve points played
+    player_1stIn = ifelse(player_type == "winner_id", w_1stIn, l_1stIn), #number of first serves made
+    player_1stWon = ifelse(player_type == "winner_id", w_1stWon, l_1stWon), #number of first serve points won
+    player_2ndWon = ifelse(player_type == "winner_id", w_2ndWon, l_2ndWon), #number of second serve points won
+    player_SvGms = ifelse(player_type == "winner_id", w_SvGms, l_SvGms), #number of serve games
+    player_bpSaved = ifelse(player_type == "winner_id", w_bpSaved, l_bpSaved), #break points saved
+    player_bpFaced = ifelse(player_type == "winner_id", w_bpFaced, l_bpFaced), #break points faced
+    
+    player_rank = ifelse(player_type == "winner_id", winner_rank, loser_rank), #ranking
+    player_rank_points = ifelse(player_type == "winner_id", winner_rank_points, loser_rank_points), #ranking points
+    
+    outcome = ifelse(player_type == "winner_id", 1, 0) #new outcome binary variable 
+  ) |>
+  dplyr::select(-c(player_type, winner_name, winner_seed, winner_hand, winner_ht, winner_age,
+            loser_name, loser_seed, loser_hand, loser_ht, loser_age, winner_ioc, loser_ioc,
+            winner_entry,loser_entry, w_ace, w_df, w_svpt, w_1stIn, w_1stWon, w_2ndWon, w_SvGms,
+            w_bpSaved, w_bpFaced, l_ace, l_df, l_svpt, l_1stIn, l_1stWon, l_2ndWon, l_SvGms,
+            l_bpSaved, l_bpFaced, winner_rank, winner_rank_points, loser_rank, loser_rank_points))
+#get rid of redundant columns
+
+long_data$outcome <- factor(long_data$outcome,
+                            levels = c(0,1),
+                            labels = c('Lost', 'Won'))
+
+#1st serve percentage column added
+long_data$player_1stInPerc  <- (long_data$player_1stIn/long_data$player_svpt) * 100
+long_data$player_1stWonPerc <- (long_data$player_1stWon/long_data$player_1stIn) * 100
+
+#added in second serve stats to make later analysis easier
+long_data$player_2ndIn  <- long_data$player_svpt - long_data$player_1stIn - long_data$player_df
+long_data$player_2ndWonPerc <- (long_data$player_2ndWon/long_data$player_2ndIn) * 100
+
+long_data <- long_data |>
+  relocate(outcome, .after=player_2ndWonPerc)
+
+```
+
+### Summary of key statistics
+
+```{r}
+#Scatterplot of 1st Serve Win % Against Ace Count
+long_data |>
+  ggplot(aes(x = player_1stWonPerc, y = player_ace, color = outcome)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(0, 100, by = 5)) +
+  scale_y_continuous(breaks = seq(0, 60, by = 10)) +
+  labs(title = '1st Serve Win Percentage vs Ace Count Grouped by Match Outcome',
+       x = 'Win Percentage on 1st Serve',
+       y = 'Ace Count')
+
+#Density plot of 1st Serve Win %
+long_data |>
+  ggplot(aes(x = player_1stWonPerc, fill = outcome)) +
+  geom_density() +
+  scale_x_continuous(breaks = seq(0, 100, by = 5)) +
+  labs(title = 'Density plot of 1st Serve Win Percentage Grouped by Result',
+       x = 'Win Percentage on 1st Serve',
+       y = 'Density')
+#Clear difference in peaks of both plots - losers average around 65% 1st Serve Win %, while winners average close to 80%
+```
+
+
+###More plots
+
+This section includes box plots of key variables, grouped by match outcome. A bar graph looking at court surface is included, as a possible source of bias. 
+
+```{r}
+
+#Boxplots
+#1st Serve In%
+long_data |>
+  ggplot(aes(x = outcome, y = player_1stInPerc, fill = outcome)) +
+  geom_boxplot() +
+  labs(title = '1st Serve in Percentage between Winners and Losers',
+       y = 'First Serve in (%)')
+
+#1st Serve Won %
+long_data |>
+  ggplot(aes(x = outcome, y = player_1stWonPerc, fill = outcome)) +
+  geom_boxplot() +
+  labs(title = '1st Serve Won Percentage between Winners and Losers',
+       y = 'First Serve Won (%)')
+#First serve won % gap is clearly bigger among winners, compared to first serve in %
+
+#Double faults
+long_data |>
+  ggplot(aes(x = outcome, y = player_df, fill = outcome)) +
+  geom_boxplot() +
+  labs(title = 'Double Faults between Winners and Losers',
+       y = 'Double Faults')
+
+#Break Points faced
+long_data |>
+  ggplot(aes(x = outcome, y = player_bpFaced, fill = outcome)) +
+  geom_boxplot() +
+  labs(title = 'Break Points Faced between Winners and Losers',
+       y = 'BP Faced')
+#Break Points Saved
+long_data |>
+  ggplot(aes(x = outcome, y = player_bpSaved, fill = outcome)) +
+  geom_boxplot() +
+  labs(title = 'Break Points Saved between Winners and Losers',
+       y = 'BP Saved')
+
+#Bias in court type
+ggplot(data=data,
+       aes(x = surface, fill = surface)) +
+  geom_bar() +
+  geom_text(stat = 'count', aes(label = after_stat(count)), vjust = -0.5) +
+  scale_fill_manual(values = c("brown", "greenyellow", "skyblue")) +
+  theme_minimal()
+#Many more hard court matches played in 2024, possible source of bias
+
+
+
+```
+
+###Feature Analysis
+
+We will run a random forest model to assess variable importance. This will give us a sense of how many predictors to include in our final model.
+
+
+```{r}
+
+library(randomForest)
+set.seed(3)
+
+long_data_shuffled<- long_data[sample(6152, size=6152, replace=FALSE), ]
+data_train <- long_data_shuffled[1:(0.7*nrow(long_data_shuffled)), ]
+data_train <- na.omit(data_train)
+data_test <- long_data_shuffled[ceiling((0.7*nrow(long_data_shuffled))):(nrow(long_data_shuffled)),]
+data_test <- na.omit(data_test)
+
+rf_model <- randomForest(outcome ~ .,
+                         data = na.omit(data_train),
+                         ntree=500, #default value
+                         mtry = 6, #approx sqrt(# of predictors)
+                         importance = TRUE
+)
+
+varImpPlot(rf_model, type=2, cex=0.60, main = 'Which Variables are Most Important to Winning?', cex.main = 1.75)
+
+```
+By far, the most important variables to model success is the percentage of 1st and 2nd serve points won by the player. This lines up with common knowledge, as better serving --> better outcome. An interesting note is that # of break points faced is 3rd, which again points to serving efficiency playing a massive part to overall success.
+
+####Saving Important Variables
+
+In order to strike a balance between model simplicity and accuracy, I have decided to include a maximum of the top 10 features measured in the above plot. I have confidence in this decision because the variable importance after the top 10 hover around a MeanDecreaseGini value of 50-60. Adding all of these variables in our analysis may introduce unnecessary complications without a tangible increase in accuracy.
+
+```{r}
+
+importance_data <- data.frame(Feature = rownames(importance(rf_model)),
+                              Importance = importance(rf_model)[,"MeanDecreaseGini"])
+
+importance_data <- importance_data[order(-importance_data$Importance), ]
+
+top10_important <- head(importance_data, 10)
+rownames(top10_important) <- NULL
+
+important_variables <- top10_important$Feature
+
+```
+
+###How Many of the top 10 features should we include in our final model?
+
+We can iterate through our features, gradually increasing the number included in our training step. Then, we can compare accuracy levels for each round.
+
+Note: Random forest was initially used for this step, but this proved to be too computationally expensive, so XGBoost method was used instead. This method is also slow, but it still completes the task. (Takes ~1-2min to complete)
+
+```{r}
+library(caret)
+library(xgboost)
+
+ctrl <- trainControl(method = 'cv',
+                     number=3,
+                     search = 'random') #3-fold for efficiency 
+
+results <- data.frame()
+
+set.seed(123)
+for (i in 5:10) { 
+  xgb_features <- train(
+    outcome ~.,
+    data=data_train[,c("outcome", important_variables[1:i])],
+    method = 'xgbTree',
+    trControl = ctrl,
+    tuneGrid = expand.grid(
+      nrounds = 300, #boosting round
+      max_depth = 6, #depth of trees, prevents overfitting
+      eta = 0.3, #Learning rate
+      gamma = 0,
+      colsample_bytree = 1, #overfitting measure
+      min_child_weight = 1,
+      subsample = 1 #overfitting measure
+      )
+    )
+  results <- rbind(results, data.frame(NumFeatures = i, Accuracy = max(xgb_features$results$Accuracy)))
+}
+
+```
+
+Model accuracy peaks at top 9 features included, although accuracy is very consistent across all iterations, which is a good sign. Running this step multiple times has yielded a pattern like this, so top 9 features will be used in the final model.
+
+```{r}
+
+results |>
+  ggplot(aes(x = NumFeatures, y = Accuracy)) +
+  geom_line() +
+  labs(title= 'Accuracy of Model Against Number of Features',
+       x = 'Number of Features',
+       y = 'Accuracy')
+  theme_minimal()
+
+```
+
+###Tuning Hyperparameters
+
+Initially, I attempted to tune through 3 values for each of the 7 hyperparameters, but the running time was extremely long. To get around this, I focused my tuning step to nrounds, learning rate, and max_depth, since these are the most important hyperparameters for the model. Instead of 3 values each, the grid iterates through 2 each. The rest are held constant.
+
+```{r}
+
+grid <- expand.grid(
+  nrounds = c(100,200), #number of trees
+  eta = c(0.01, 0.1), #Learning rates
+  max_depth = c(3,6),#Tree depth
+  gamma = 0,
+  colsample_bytree = 0.8,
+  min_child_weight = 5,
+  subsample = 0.8
+)
+
+```
+
+```{r}
+set.seed(123)
+
+xgb_tuned <- train(
+  outcome ~.,
+  data=data_train[, c("outcome", important_variables[1:9])],
+  method = 'xgbTree',
+  trControl = ctrl,
+  tuneGrid = grid,
+  verbosity = 0
+)
+
+print(xgb_tuned$bestTune)
+
+```
+
+###Final Model With Tuned Hyperparameters
+
+```{r}
+set.seed(3)
+best_rounds <- as.numeric(xgb_tuned$bestTune['nrounds'])
+best_eta <- as.numeric(xgb_tuned$bestTune['eta'])
+best_depth <- as.numeric(xgb_tuned$bestTune['max_depth'])
+
+xgb_tuned <- train(
+  outcome ~.,
+  data=data_train[, c("outcome", important_variables[1:9])],
+  method = 'xgbTree',
+  trControl = ctrl,
+  tuneGrid = expand.grid(
+    nrounds = best_rounds,
+    max_depth = best_depth,
+    eta = best_eta, 
+    gamma = 0,
+    colsample_bytree = 0.8,
+    min_child_weight = 1,
+    subsample = 0.8),
+  verbosity = 0
+)
+
+
+```
+
+#### Testing Results
+
+```{r}
+set.seed(123)
+#converting score to factor to work with xgboost specifics
+data_train$score <- factor(data_train$score)
+data_test$score <- factor(data_test$score)
+levels(data_test$score) <-levels(data_train$score) 
+
+final_preds <- predict(xgb_tuned, newdata = data_test)
+final_cm <- confusionMatrix(final_preds, data_test$outcome)
+
+final_acc <- final_cm$overall['Accuracy']
+final_sensitivity <- final_cm$byClass['Sensitivity']
+final_specificity <- final_cm$byClass['Specificity']
+
+print(as.data.frame(c(final_acc, final_sensitivity, final_specificity)))
+
+```
+
+###Final Thoughts
+
+Final accuracy hovers around 77-78%, with similar specificity and sensitivity values. This is a strong value for any model trying to predict sports outcomes, due to inherent variation in match outcome. Possible limitations include bias in court type (hard court matches comprise 58% of all matches). This model also assumes that as you sequentially add features to train model, there is no negative interaction between them. Testing different combinations of variables will likely further improve accuracy. Additionally, using XGBoost for feature selection took a fairly long time, so simpler methods should be considered.
