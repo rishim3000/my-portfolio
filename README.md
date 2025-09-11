@@ -2,6 +2,13 @@
 
 #### Technical Skills: Python, R, SQL, STATA
 
+## Work Experience
+### Analytics Intern, Data and AI Team @ Reveleer
+- Evaluated and summarized performance of NLP models, delivering technical insights to both engineering teams and business leaders
+- Identified **high-impact ICD-10 codes and HCCs**, designing a framework to prioritize quality assurance pain points
+- Developed and deployed **RF-DETR object detection computer vision model** to accurately detect tables used in HEDIS quality metric reporting
+
+
 ## Education
 - M.S., Data Science | University of California, San Francisco (_July 2024 - June 2026_)
 
