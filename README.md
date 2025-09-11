@@ -10,6 +10,8 @@
   
 - Developed and deployed **RF-DETR object detection computer vision model** to accurately detect tables used in HEDIS quality metric reporting
 
+  ![IoU images](/Images/IoU.png) ![Pareto](/Images/pareto_curve.png)
+
 
 ## Education
 - M.S., Data Science | University of California, San Francisco (_July 2024 - June 2026_)
