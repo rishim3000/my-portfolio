@@ -4,7 +4,7 @@
 
 ## Work Experience
 ### Analytics Intern, Data and AI Team @ Reveleer
-- Evaluated and summarized performance of NLP models, delivering technical insights to both engineering teams and business leaders
+- Evaluated and summarized performance of Reveleer's NLP models, delivering technical insights to both engineering teams and business leaders
   
 - Identified **high-impact ICD-10 codes and HCCs**, designing a framework to prioritize quality assurance pain points
   
