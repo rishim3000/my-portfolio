@@ -14,7 +14,7 @@
 
 
 ## Education
-- M.S., Data Science | University of California, San Francisco (_July 2024 - June 2026_)
+- M.S., Health Data Science | University of California, San Francisco (_July 2024 - June 2026_)
 
 - B.S., Molecular Biology | University of Washington (_September 2018 - March 2022_)
 
