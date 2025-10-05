@@ -10,7 +10,7 @@
   
 - Developed and deployed **RF-DETR object detection computer vision model** to accurately detect tables used in HEDIS quality metric reporting
 
-  ![IoU images](/Images/IoU.png)
+  ![demimages](/Images/IoU.png)
 
 
 ## Education
@@ -19,6 +19,14 @@
 - B.S., Molecular Biology | University of Washington (_September 2018 - March 2022_)
 
 ## Projects
+### Breast Cancer Diagnosis Prediction with ML Models
+
+Compared ML, Logistic Regression and XGBoost classifiers and conducted stress test with increasing levels of noise and outliers.
+
+Deployed results to Streamlit web app for user interaction. Gained key skills in transforming data-driven ideas into interactive web applications.
+
+![demo code](/Images/code.png) ![demo](/Images/Streamlit_demo.png)
+
 ### Analysis of Multiple Sclerosis Patient Data
 
 How can we derive meaningful conclusions from messy data using **Python**?
