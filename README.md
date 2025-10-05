@@ -25,7 +25,7 @@ Compared ML, Logistic Regression and XGBoost classifiers and conducted stress te
 
 Deployed results to Streamlit web app for user interaction. Gained key skills in transforming data-driven ideas into interactive web applications.
 
-![demo code](/Images/code.png) ![demo](/Images/Streamlit_demo.png)
+![demo](/Images/Streamlit_demo.png)
 
 ### Analysis of Multiple Sclerosis Patient Data
 
