@@ -70,6 +70,12 @@ Achieved a peak accuracy of **80%**, with similar sensitivity and specificity va
 
 ## Research
 
+- Casaletto Lab - University of California, San Francisco
+
+We analyzed genetic biomarkers to refine pre-symptomatic detection of Alzheimer's disease. We quantified the synaptic peptide expression levels of 227 candidate peptides screeened through Selected Reaction Monitoring (SRM). This data was used to create linear models in **R** to correlate peptide expression with both neuropathology indicators (Tau, Amlyoid, TDP-43, LBD, etc.) and global cognition. This research will give us a clearer understanding of where to focus biolgic research to address Alzheimer's before clinical symptoms.
+
+![heatmap](/Images/beta_heatmap_updated.png)
+
 - Stuber Lab - University of Washington
 
 [Publication](https://www.biorxiv.org/content/10.1101/2021.09.02.458782v1)
