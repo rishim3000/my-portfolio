@@ -1,0 +1,472 @@
+---
+title: "Sensitivity_Analysis"
+output: html_document
+date: "2026-03-02"
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(tableone)
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(dplyr)
+library(corrplot)
+library(ordinal)
+library(car)
+
+```
+
+
+
+```{r data}
+
+data <- read.csv('srm_longi_12172024.csv')
+
+data$msex <- factor(data$msex,
+                    levels = c(0,1),
+                    labels = c('Female', 'Male'))
+
+data$cogdx_3gp <- factor(data$cogdx_3gp,
+                         levels = c(1,2,3),
+                         labels = c('Normal', 'MCI', 'Dementia'))
+
+data$race7 <- factor(data$race7,
+                     levels = c(1:7),
+                     labels = c('White', 
+                                'Black or African American', 
+                                'American Indian or Alaska Native',
+                                'Native Hawaiian or Other Pacific Islander',
+                                'Asian',
+                                'Other',
+                                'Unknown'))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3))
+
+
+data$tdp_st4 <- ifelse(data$tdp_st4 <= 1, 0, 1)
+
+data$tdp_st4 <- factor(data$tdp_st4,
+                       levels = c(0:1),
+                       labels = c("No TDP-43 pathology or pathology in amygdala only",
+                                 "TDP-43 pathology extending beyond amygdala"  ))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3),
+                       labels = c('No neuritic plaques',
+                                  'Sparse neuritic plaques',
+                                  'Moderate neuritic plaques',
+                                  'Frequent neuritic plaques'))
+
+data$dlbdx <- factor(data$dlbdx,
+                     levels = c(0:3),
+                     labels = c('Not present',
+                                'Nigral-predominant',
+                                'Limbic-type',
+                                'Neocortical-type'))
+
+data$braaksc <- factor(data$braaksc, ordered = TRUE)
+
+#inverting ceradsc
+data$ceradsc <- factor(data$ceradsc, ordered = TRUE)
+
+data$ceradsc <- as.numeric(data$ceradsc)
+
+max_val <- max(data$ceradsc, na.rm = TRUE)
+
+data$ceradsc_inv <- max_val + 1 - data$ceradsc
+
+data$ceradsc_inv <- factor(data$ceradsc_inv, ordered = TRUE)
+
+data$caa_4gp <- factor(data$caa_4gp, ordered = TRUE)
+
+data$dlbdx <- factor(data$dlbdx, ordered = TRUE)
+
+data <- data |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+  
+runs_1_2 <- read.csv('SRM_Runs_1_and_2.csv')
+run_3 <- read.csv('SRM_Run_3.csv')
+
+```
+
+
+``` {r}
+
+run_1_2_names <- runs_1_2$Peptide.ID
+
+run_3_nodes <- run_3$gene.symbol
+
+prefixes = c(run_1_2_names, run_3_nodes)
+
+pattern <- paste0("^", paste(prefixes , collapse = "|"))
+
+synaptic_peptide_names <-grep(pattern, names(data), value = TRUE)
+synaptic_peptide_data <- data[, synaptic_peptide_names]
+
+```
+
+``` {r vars}
+
+pathology_cols = c('ProjID', 'age_death', 'cogdx_3gp','cogn_global', 'msex', 'educ', 'b_score', 'braaksc', 'c_score', 'dlbdx', 'tdp_st4', 'arteriol_scler', 'caa_4gp', 'cvda_4gp2', 'ci_num2_gct', 'ci_num2_mct', 'amyloid', 'tangles', 'ceradsc', 'ceradsc_inv')
+
+
+data_pathology <- data[, pathology_cols]
+
+pathology_synaptic_peptides <- cbind(data_pathology, synaptic_peptide_data)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides |>
+  distinct(ProjID, .keep_all = TRUE)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides_unique |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+
+
+```
+
+``` {r demo-adj}
+
+for (peptide in synaptic_peptide_names) {
+  
+  formula <- as.formula(paste(peptide, "~ age_death + msex + educ"))
+  
+  # Fit linear model
+  model <- lm(formula, data = pathology_synaptic_peptides_unique, na.action = na.exclude)
+  
+  # Store residuals as new adjusted peptide variable
+  pathology_synaptic_peptides_unique[[paste0(peptide, "_adj")]] <- resid(model)
+}
+
+
+data_z <- pathology_synaptic_peptides_unique %>%
+  mutate(
+    across(
+      c(amyloid, tangles, cogn_global,
+        ends_with("_adj")), ~ as.numeric(scale(.x))
+      )
+  )
+
+all_pathologies <- c(
+  "braaksc",
+  "tangles",
+  "amyloid",
+  "ceradsc_inv",
+  "dlbdx",
+  "caa_4gp",
+  "tdp_st4",
+  "vascular_composite"
+)
+
+adj_synaptic_peptide_names <- paste0(synaptic_peptide_names, '_adj')
+```
+
+```{r model}
+run_model_sensitivity <- function(peptide, var, all_pathologies) {
+  
+  covars <- setdiff(all_pathologies, var)
+  vars <- c(peptide, var, covars)
+  
+  model_data <- data_z[, vars]
+
+  model_data <- model_data %>%
+    filter(across(everything(), ~ !is.na(.) & !is.nan(.))) %>%
+    mutate(
+      across(all_of(peptide), as.numeric),
+      braaksc = as.numeric(braaksc),
+      ceradsc_inv = as.numeric(ceradsc_inv),
+      dlbdx = as.numeric(dlbdx),
+      caa_4gp = as.numeric(caa_4gp),
+      tdp_st4 = as.factor(tdp_st4)
+    )
+
+  # Build formula
+  rhs <- paste(c(var, covars), collapse = " + ")
+  formula <- as.formula(paste(peptide, "~", rhs))
+
+  model <- tryCatch(
+    lm(formula, data = model_data),
+    error = function(e) {
+      message("Error for peptide ", peptide, ": ", e$message)
+      return(NULL)
+    }
+  )
+  
+
+  if (!is.null(model)) {
+    
+    vif_values <- car::vif(model)
+    
+    vif_df <- data.frame(
+      predictor = names(vif_values),
+      vif = as.numeric(vif_values),
+      outcome = var,
+      peptide = peptide,
+      stringsAsFactors = FALSE
+  )
+    
+    model_df <- broom::tidy(model) %>%
+      filter(term == var | grepl(paste0("^", var), term)) %>%
+      mutate(outcome = var,
+             peptide = peptide)
+    
+    list(
+      model_results = model_df,
+      vif_results = vif_df
+    )
+  } else {
+    return(NULL)
+  }
+}
+```
+
+``` {r braaksc}
+
+
+results_list <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "braaksc",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_braak <- purrr::map_dfr(results_list, "model_results")
+vif_braak <- purrr::map_dfr(results_list, "vif_results")
+
+results_braak_holm <- results_braak |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r tangles}
+
+results_list_tangles <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "tangles",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_tangles <- purrr::map_dfr(results_list_tangles, "model_results")
+vif_tangles <- purrr::map_dfr(results_list_tangles, "vif_results")
+
+
+results_tangles_holm <- results_tangles |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r amyloid}
+
+results_list_amyloid <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "amyloid",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_amyloid <- purrr::map_dfr(results_list_amyloid, "model_results")
+vif_amyloid <- purrr::map_dfr(results_list_amyloid, "vif_results")
+
+results_amyloid_holm <- results_amyloid |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r ceradsc_inv}
+
+
+results_list_ceradsc <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "ceradsc_inv",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_ceradsc <- purrr::map_dfr(results_list_ceradsc, "model_results")
+vif_ceradsc <- purrr::map_dfr(results_list_ceradsc, "vif_results")
+
+results_ceradsc_holm <- results_ceradsc |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r LBD}
+
+results_list_lbd <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "dlbdx",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_lbd <- purrr::map_dfr(results_list_lbd, "model_results")
+vif_lbd <- purrr::map_dfr(results_list_lbd, "vif_results")
+
+results_lbd_holm <- results_lbd |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r CAA}
+
+results_list_caa <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "caa_4gp",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_caa <- purrr::map_dfr(results_list_caa, "model_results")
+vif_caa <- purrr::map_dfr(results_list_caa, "vif_results")
+
+results_caa_holm <- results_caa |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r TDP-43}
+
+results_list_tdp43 <- purrr::map(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+    run_model_sensitivity(
+      peptide = .x,
+      var = "tdp_st4",
+      all_pathologies = all_pathologies
+    )
+  )  
+)
+
+
+
+results_tdp43 <- purrr::map_dfr(results_list_tdp43, "model_results")
+vif_tdp43 <- purrr::map_dfr(results_list_tdp43, "vif_results")
+
+
+results_tdp43_holm <- results_tdp43 |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+``` {r vasc composite}
+
+results_vasc <- purrr::map_dfr(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+      run_model_sensitivity(
+        peptide = .x,
+        var = "vascular_composite",
+        all_pathologies = all_pathologies
+      )
+    )
+)
+
+results_vasc <- arrange(results_vasc, p.value)
+
+results_vasc_holm <- results_vasc |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+``` {r cog}
+
+results_cog <- purrr::map_dfr(
+  adj_synaptic_peptide_names,
+  ~ suppressWarnings(
+      run_model_sensitivity(
+        peptide = .x,
+        var = "cogn_global",
+        all_pathologies = all_pathologies
+      )
+    )
+)
+
+results_cog <- arrange(results_cog, p.value)
+
+results_cog_holm <- results_cog |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+``` {r excel}
+library(writexl)
+
+list_of_dfs <- list("braaksc" = results_braak_holm,
+                    "tangles" = results_tangles_holm,
+                    "amyloid" = results_amyloid_holm,
+                    "caa" = results_CAA_holm,
+                    "CERAD" = results_cerad_holm,
+                    "LBD" = results_LBD_holm,
+                    "Vascular Composite" =
+                      results_vasc_holm,
+                    "TDP-43" = results_TDP_43_holm,
+                    "Cognition" = results_cog_holm)
+
+write_xlsx(list_of_dfs, "sensitivity_linearmodeldata.xlsx")
+
+```

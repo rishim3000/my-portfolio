@@ -1,0 +1,11 @@
+Label,Description
+GABA/Glu-localization selectivity,Is selectively expressed in glutamatergic or GABAergic neurons?
+GABA/Glu-localization enrichment,Is expressed more abundantly in glutamatergic or GABAergic neurons?
+GABA/Glu-function selectivity,Belongs to the glutamatergic or GABAergic system?
+Pre/post-synaptic selectivity,Is selectively expressed at pre- or postsynaptic terminals?
+Pre/post-synaptic enrichment,Is expressed more abundantly in pre- or postsynaptic terminals?
+Neuron-enriched,Is the expression enriched in neurons compared to glia?
+Synaptically enriched,"Within neurons, is mainly localized at synapses?"
+Protein class,Type of protein according to molecular function
+Main biological process,Main biological function within the neuron
+Main subcellular localization,Main subcellular localiization within the neuron

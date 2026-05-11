@@ -1,0 +1,49 @@
+peptide ,pathology
+MAPK1,Amyloid
+MAPK1,Amyloid
+NCDN,Amyloid
+NPTX2,Amyloid
+NPTX2,Amyloid
+NPTX2,Amyloid
+NPTX2,Amyloid
+SEPT5,Amyloid
+SNAP25_1,Amyloid
+SNAP25_2,Amyloid
+SNAP25_6,Amyloid
+SNAP25_7,Amyloid
+STX1A_1,Amyloid
+STX1A_2,Amyloid
+STXBP1_1,Amyloid
+STXBP1_2,Amyloid
+SYNPO,Amyloid
+SYNPO,Amyloid
+SYT12_1,Amyloid
+VAPB_2,Amyloid
+VCP,Amyloid
+ARC,Tau
+MAPK1,Tau
+MAPK1,Tau
+MAPK1,Tau
+NPTX2,Tau
+NPTX2,Tau
+NPTX2,Tau
+RAB6B,Tau
+SEPT5,Tau
+SEPT5,Tau
+SNAP25_1,Tau
+SNAP25_2,Tau
+STX1A_1,Tau
+STX1A_2,Tau
+SYNPO,Tau
+SYNPO,Tau
+SYT12_1,Tau
+SHANK2,LBD
+SYNGAP1,LBD
+SYNGAP1,LBD
+SYNPO,LBD
+NPTX2,LBD
+RAB6B,Atherosclerosis
+NPTX2,Global Cognition
+NPTX2,Global Cognition
+NPTX2,Global Cognition
+MAPK1,Global Cognition

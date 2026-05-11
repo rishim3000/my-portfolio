@@ -1,0 +1,230 @@
+---
+title: "Cog_Association"
+output: html_document
+date: "2025-11-01"
+---
+
+``` {r packages}
+library(tidyverse)
+library(tableone)
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(dplyr)
+library(corrplot)
+
+```
+
+``` {r data-loading}
+
+data <- read.csv('srm_longi_12172024.csv')
+
+data$msex <- factor(data$msex,
+                    levels = c(0,1),
+                    labels = c('Female', 'Male'))
+
+data$cogdx_3gp <- factor(data$cogdx_3gp,
+                         levels = c(0,1,2),
+                         labels = c('Normal', 'MCI', 'Dementia'))
+
+data$race7 <- factor(data$race7,
+                     levels = c(1:7),
+                     labels = c('White', 
+                                'Black or African American', 
+                                'American Indian or Alaska Native',
+                                'Native Hawaiian or Other Pacific Islander',
+                                'Asian',
+                                'Other',
+                                'Unknown'))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3))
+
+data$tdp_st4 <- ifelse(data$tdp_st4 <= 1, 0, 1)
+
+data$tdp_st4 <- factor(data$tdp_st4,
+                       levels = c(0:1),
+                       labels = c("No TDP-43 pathology or pathology in amygdala only",
+                                 "TDP-43 pathology extending beyond amygdala"  ))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3),
+                       labels = c('No neuritic plaques',
+                                  'Sparse neuritic plaques',
+                                  'Moderate neuritic plaques',
+                                  'Frequent neuritic plaques'))
+
+  
+runs_1_2 <- read.csv('SRM_Runs_1_and_2.csv')
+run_3 <- read.csv('SRM_Run_3.csv')
+
+
+
+```
+
+``` {r only-syn-peptides}
+
+run_1_2_names <- runs_1_2$Peptide.ID
+
+run_3_nodes <- run_3$gene.symbol
+
+prefixes = c(run_1_2_names, run_3_nodes)
+
+pattern <- paste0("^", paste(prefixes , collapse = "|"))
+
+synaptic_peptide_names <-grep(pattern, names(data), value = TRUE)
+synaptic_peptide_data <- data[, synaptic_peptide_names]
+
+
+
+
+```
+
+``` {r combine-pathology}
+
+pathology_cols = c('ProjID', 'age_death', 'cogdx_3gp','cogn_global', 'msex', 'educ', 'b_score', 'braaksc', 'c_score', 'dlbdx', 'tdp_st4', 'arteriol_scler', 'caa_4gp', 'cvda_4gp2', 'ci_num2_gct', 'ci_num2_mct', 'amyloid', 'tangles', 'ceradsc')
+
+
+data_pathology <- data[, pathology_cols]
+
+pathology_synaptic_peptides <- cbind(data_pathology, synaptic_peptide_data)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides |>
+  distinct(ProjID, .keep_all = TRUE)
+
+
+```
+
+
+``` {r linear-model}
+
+run_model <- function(peptide, var) {
+  vars <- c(peptide, var, "msex", "educ", 'age_death')
+  model_data <- pathology_synaptic_peptides_unique[, vars]
+
+  # Drop rows with NA/NaN
+  model_data <- model_data %>%
+    filter(across(everything(), ~ !is.na(.) & !is.nan(.))) %>%
+    mutate(across(all_of(peptide), as.numeric))
+
+  # Fit model
+  formula <- as.formula(paste(var, "~", peptide, "+ msex + educ + age_death"))
+  model <- tryCatch(
+    lm(formula, data = model_data),
+    error = function(e) {
+      message("Error for peptide ", peptide, ": ", e$message)
+      return(NULL)
+    }
+  )
+
+  # Return tidy results if model ran successfully
+  if (!is.null(model)) {
+    broom::tidy(model) %>%
+      filter(term == var) %>%
+      mutate(peptide = peptide)
+  } else {
+    return(NULL)
+  }
+}
+
+
+
+
+```
+
+```{r cog association}
+
+results_cogscore_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "cogn_global") |>
+  bind_rows())
+
+results_cogscore_adj_holm <- results_cogscore_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p_holm)
+
+results_cogscore_adj_holm[results_cogscore_adj_holm$p_holm < 0.05, ]$term
+
+```
+
+```{r UpSet}
+
+install.packages("ComplexUpset")
+install.packages("UpSetR")
+library(UpSetR)
+library(ComplexUpset)
+library(tidyverse)
+
+#define significant peptides
+cognition_significant_peptides <- results_cogscore_adj_holm[results_cogscore_adj_holm$p_holm < 0.05, ]$term
+braaksc_significant_peptides <- results_braaksc_adj_holm[results_braaksc_adj_holm$p_holm < 0.05, ]$term
+tangles_significant_peptides <- results_tangles_adj_holm[results_tangles_adj_holm$p_holm < 0.05, ]$term
+amyloid_significant_peptides <- results_amyloid_adj_holm[results_amyloid_adj_holm$p_holm < 0.05, ]$term
+cerad_significant_peptides <- results_ceradsc_adj_holm[results_ceradsc_adj_holm$p_holm < 0.05, ]$term
+lbd_significant_peptides <- results_lbd_adj_holm[results_lbd_adj_holm$p_holm < 0.05, ]$term
+
+sets_list <- list(
+  braaksc = braaksc_significant_peptides,
+  tangles = tangles_significant_peptides,
+  Amyloid = amyloid_significant_peptides,
+  LBD = lbd_significant_peptides,
+  CERAD = cerad_significant_peptides,
+  GlobalCognition = cognition_significant_peptides
+)
+
+
+upset_data <- fromList(sets_list)
+
+
+
+#ComplexUpSet diagram
+
+upset_plot <- UpSetR::upset(
+  upset_data,
+  sets = names(upset_data),
+  order.by = 'freq',
+  sets.bar.color = 'steelblue'
+      )
+
+ggsave(plot = upset_plot, filename = 'upset_plot.png')
+
+
+```
+
+
+``` {r intersection}
+intersect_braaksc_cerad_tangles_Amyloid <- Reduce(intersect, list(
+  braaksc_significant_peptides,
+  cerad_significant_peptides,
+  tangles_significant_peptides,
+  amyloid_significant_peptides
+))
+
+intersect_cog_braaksc_cerad_tangles_Amyloid <- Reduce(intersect, list(
+  cognition_significant_peptides,
+  braaksc_significant_peptides,
+  cerad_significant_peptides,
+  tangles_significant_peptides,
+  amyloid_significant_peptides
+))
+
+
+intersect_cog_LBD_braaksc_cerad_tangles_Amyloid <- Reduce(intersect, list(
+  cognition_significant_peptides,
+  lbd_significant_peptides,
+  braaksc_significant_peptides,
+  cerad_significant_peptides,
+  tangles_significant_peptides,
+  amyloid_significant_peptides
+))
+
+intersect_LBD_braaksc_cerad_tangles_Amyloid <- Reduce(intersect, list(
+  lbd_significant_peptides,
+  braaksc_significant_peptides,
+  cerad_significant_peptides,
+  tangles_significant_peptides,
+  amyloid_significant_peptides
+))
+
+
+```

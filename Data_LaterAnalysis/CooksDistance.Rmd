@@ -1,0 +1,233 @@
+---
+title: "CooksD"
+output: html_document
+date: "2026-03-28"
+---
+
+```{r setup}
+
+library(tidyverse)
+library(tableone)
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(dplyr)
+library(corrplot)
+library(ordinal)
+
+```
+
+
+```{r}
+
+data <- read.csv('srm_longi_12172024.csv')
+
+data$msex <- factor(data$msex,
+                    levels = c(0,1),
+                    labels = c('Female', 'Male'))
+
+data$cogdx_3gp <- factor(data$cogdx_3gp,
+                         levels = c(1,2,3),
+                         labels = c('Normal', 'MCI', 'Dementia'))
+
+data$race7 <- factor(data$race7,
+                     levels = c(1:7),
+                     labels = c('White', 
+                                'Black or African American', 
+                                'American Indian or Alaska Native',
+                                'Native Hawaiian or Other Pacific Islander',
+                                'Asian',
+                                'Other',
+                                'Unknown'))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3))
+
+
+data$tdp_st4 <- ifelse(data$tdp_st4 <= 1, 0, 1)
+
+data$tdp_st4 <- factor(data$tdp_st4,
+                       levels = c(0:1),
+                       labels = c("No TDP-43 pathology or pathology in amygdala only",
+                                 "TDP-43 pathology extending beyond amygdala"  ))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3),
+                       labels = c('No neuritic plaques',
+                                  'Sparse neuritic plaques',
+                                  'Moderate neuritic plaques',
+                                  'Frequent neuritic plaques'))
+
+data$dlbdx <- factor(data$dlbdx,
+                     levels = c(0:3),
+                     labels = c('Not present',
+                                'Nigral-predominant',
+                                'Limbic-type',
+                                'Neocortical-type'))
+
+data$braaksc <- factor(data$braaksc, ordered = TRUE)
+
+#inverting ceradsc
+data$ceradsc <- factor(data$ceradsc, ordered = TRUE)
+
+data$ceradsc <- as.numeric(data$ceradsc)
+
+max_val <- max(data$ceradsc, na.rm = TRUE)
+
+data$ceradsc_inv <- max_val + 1 - data$ceradsc
+
+data$ceradsc_inv <- factor(data$ceradsc_inv, ordered = TRUE)
+
+data$caa_4gp <- factor(data$caa_4gp, ordered = TRUE)
+
+data$dlbdx <- factor(data$dlbdx, ordered = TRUE)
+
+data <- data |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+  
+runs_1_2 <- read.csv('SRM_Runs_1_and_2.csv')
+run_3 <- read.csv('SRM_Run_3.csv')
+
+
+```
+
+
+```{r}
+
+run_1_2_names <- runs_1_2$Peptide.ID
+
+run_3_nodes <- run_3$gene.symbol
+
+prefixes = c(run_1_2_names, run_3_nodes)
+
+pattern <- paste0("^", paste(prefixes , collapse = "|"))
+
+synaptic_peptide_names <-grep(pattern, names(data), value = TRUE)
+synaptic_peptide_data <- data[, synaptic_peptide_names]
+
+```
+
+``` {r}
+pathology_cols = c('ProjID', 'age_death', 'cogdx_3gp','cogn_global', 'msex', 'educ', 'b_score', 'braaksc', 'c_score', 'dlbdx', 'tdp_st4', 'arteriol_scler', 'caa_4gp', 'cvda_4gp2', 'ci_num2_gct', 'ci_num2_mct', 'amyloid', 'tangles', 'ceradsc', 'ceradsc_inv')
+
+
+data_pathology <- data[, pathology_cols]
+
+pathology_synaptic_peptides <- cbind(data_pathology, synaptic_peptide_data)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides |>
+  distinct(ProjID, .keep_all = TRUE)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides_unique |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+
+
+```
+
+``` {r}
+
+for (peptide in synaptic_peptide_names) {
+  
+  formula <- as.formula(paste(peptide, "~ age_death + msex + educ"))
+  
+  # Fit linear model
+  model <- lm(formula, data = pathology_synaptic_peptides_unique, na.action = na.exclude)
+  
+  # Store residuals as new adjusted peptide variable
+  pathology_synaptic_peptides_unique[[paste0(peptide, "_adj")]] <- resid(model)
+}
+
+data_z <- pathology_synaptic_peptides_unique %>%
+  mutate(across(ends_with("_adj"), ~ as.numeric(scale(.x))))
+
+```
+
+``` {r cooksd}
+
+run_cooksd <- function(peptide, var) {
+  vars <- c(var, peptide)
+  model_data <- data_z[, vars]
+
+  # Drop rows with NA/NaN
+  model_data <- model_data %>%
+    dplyr::filter(dplyr::if_all(dplyr::everything(), ~ !is.na(.) & !is.nan(.))) %>%
+    dplyr::mutate(dplyr::across(dplyr::all_of(peptide), as.numeric))
+  
+  # Convert outcome if needed
+  if (is.factor(model_data[[var]]) || is.ordered(model_data[[var]])) {
+    model_data[[var]] <- as.numeric(model_data[[var]])
+  }
+
+  # Fit model
+  formula <- as.formula(paste(var, "~", peptide))
+  model <- tryCatch(
+    lm(formula, data = model_data),
+    error = function(e) return(NULL)
+  )
+
+  if (!is.null(model)) {
+    cooks <- cooks.distance(model)
+    n <- nrow(model_data)
+    threshold <- 4 / n
+
+    return(data.frame(
+      peptide = peptide,
+      outcome = var,
+      max_cooksd = max(cooks, na.rm = TRUE),
+      pct_above_thresh = mean(cooks > threshold, na.rm = TRUE) * 100,
+      n = n,
+      threshold = threshold
+    ))
+  } else {
+    return(NULL)
+  }
+}
+
+```
+
+``` {r}
+
+cooks_tangles <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_cooksd, var = "tangles") |>
+  bind_rows())
+
+cooks_amyloid <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_cooksd, var = "amyloid") |>
+  bind_rows())
+
+cooks_cognition <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_cooksd, var = "cogn_global") |>
+  bind_rows())
+
+
+```
+
+``` {r summarize}
+
+summarize_cooks <- function(df) {
+  df |>
+    summarize(
+      max_cooksd_overall = max(max_cooksd, na.rm = TRUE),
+      mean_pct_above = mean(pct_above_thresh, na.rm = TRUE),
+      max_pct_above = max(pct_above_thresh, na.rm = TRUE)
+    )
+}
+
+summarize_cooks(cooks_tangles)
+summarize_cooks(cooks_amyloid)
+summarize_cooks(cooks_cognition)
+
+```
+

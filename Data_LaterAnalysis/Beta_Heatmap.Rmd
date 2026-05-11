@@ -1,0 +1,543 @@
+---
+title: "Beta_heatmap"
+output: html_document
+date: "2026-01-08"
+---
+
+```{r}
+library(tidyverse)
+library(tableone)
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(dplyr)
+library(corrplot)
+library(ordinal)
+
+
+```
+
+
+```{r data}
+data <- read.csv('srm_longi_12172024.csv')
+
+data$msex <- factor(data$msex,
+                    levels = c(0,1),
+                    labels = c('Female', 'Male'))
+
+data$cogdx_3gp <- factor(data$cogdx_3gp,
+                         levels = c(1,2,3),
+                         labels = c('Normal', 'MCI', 'Dementia'))
+
+data$race7 <- factor(data$race7,
+                     levels = c(1:7),
+                     labels = c('White', 
+                                'Black or African American', 
+                                'American Indian or Alaska Native',
+                                'Native Hawaiian or Other Pacific Islander',
+                                'Asian',
+                                'Other',
+                                'Unknown'))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3))
+
+
+data$tdp_st4 <- ifelse(data$tdp_st4 <= 1, 0, 1)
+
+data$tdp_st4 <- factor(data$tdp_st4,
+                       levels = c(0:1),
+                       labels = c("No TDP-43 pathology or pathology in amygdala only",
+                                 "TDP-43 pathology extending beyond amygdala"  ))
+
+data$c_score <- factor(data$c_score,
+                       levels = c(0:3),
+                       labels = c('No neuritic plaques',
+                                  'Sparse neuritic plaques',
+                                  'Moderate neuritic plaques',
+                                  'Frequent neuritic plaques'))
+
+data$dlbdx <- factor(data$dlbdx,
+                     levels = c(0:3),
+                     labels = c('Not present',
+                                'Nigral-predominant',
+                                'Limbic-type',
+                                'Neocortical-type'))
+
+data$braaksc <- factor(data$braaksc, ordered = TRUE)
+
+#inverting ceradsc
+data$ceradsc <- factor(data$ceradsc, ordered = TRUE)
+
+data$ceradsc <- as.numeric(data$ceradsc)
+
+max_val <- max(data$ceradsc, na.rm = TRUE)
+
+data$ceradsc_inv <- max_val + 1 - data$ceradsc
+
+data$ceradsc_inv <- factor(data$ceradsc_inv, ordered = TRUE)
+
+data$caa_4gp <- factor(data$caa_4gp, ordered = TRUE)
+
+data$dlbdx <- factor(data$dlbdx, ordered = TRUE)
+
+data <- data |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+  
+runs_1_2 <- read.csv('SRM_Runs_1_and_2.csv')
+run_3 <- read.csv('SRM_Run_3.csv')
+
+
+
+
+```
+
+
+
+```{r}
+
+run_1_2_names <- runs_1_2$Peptide.ID
+
+run_3_nodes <- run_3$gene.symbol
+
+prefixes = c(run_1_2_names, run_3_nodes)
+
+pattern <- paste0("^", paste(prefixes , collapse = "|"))
+
+synaptic_peptide_names <-grep(pattern, names(data), value = TRUE)
+synaptic_peptide_data <- data[, synaptic_peptide_names]
+
+
+```
+
+``` {r}
+
+pathology_cols = c('ProjID', 'age_death', 'cogdx_3gp','cogn_global', 'msex', 'educ', 'b_score', 'braaksc', 'c_score', 'dlbdx', 'tdp_st4', 'arteriol_scler', 'caa_4gp', 'cvda_4gp2', 'ci_num2_gct', 'ci_num2_mct', 'amyloid', 'tangles', 'ceradsc', 'ceradsc_inv')
+
+
+data_pathology <- data[, pathology_cols]
+
+pathology_synaptic_peptides <- cbind(data_pathology, synaptic_peptide_data)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides |>
+  distinct(ProjID, .keep_all = TRUE)
+
+
+pathology_synaptic_peptides_unique <- pathology_synaptic_peptides_unique |>
+  mutate(
+    vascular_composite = (ci_num2_mct * 3) +
+      (ci_num2_gct * 3) +
+      arteriol_scler +
+      cvda_4gp2
+  )
+
+
+```
+
+``` {r demo-adj}
+
+for (peptide in synaptic_peptide_names) {
+  
+  formula <- as.formula(paste(peptide, "~ age_death + msex + educ"))
+  
+  # Fit linear model
+  model <- lm(formula, data = pathology_synaptic_peptides_unique, na.action = na.exclude)
+  
+  # Store residuals as new adjusted peptide variable
+  pathology_synaptic_peptides_unique[[paste0(peptide, "_adj")]] <- resid(model)
+}
+
+
+```
+
+
+```{r z-scored data}
+
+data_z <- pathology_synaptic_peptides_unique %>%
+  mutate(across(ends_with("_adj"), ~ as.numeric(scale(.x))))
+
+
+
+```
+
+
+
+``` {r different regression models}
+
+#linear model
+run_model <- function(peptide, var) {
+  vars <- c(var, peptide)
+  model_data <- data_z[, vars]
+
+  # Drop rows with NA/NaN
+  model_data <- model_data %>%
+    filter(if_all(everything(), ~ !is.na(.) & !is.nan(.))) %>%
+    mutate(across(all_of(peptide), as.numeric))
+  
+  # Convert ordinal outcome to numeric
+  if (is.factor(model_data[[var]]) || is.ordered(model_data[[var]])) {
+    model_data[[var]] <- as.numeric(model_data[[var]])
+  }
+
+  # Fit model
+  formula <- as.formula(paste(var, "~", peptide))
+  model <- tryCatch(
+    lm(formula, data = model_data),
+    error = function(e) {
+      message("Error for peptide ", peptide, ": ", e$message)
+      return(NULL)
+    }
+  )
+
+  # Return tidy results if model ran successfully
+  if (!is.null(model)) {
+    broom::tidy(model) %>%
+      filter(term == peptide) %>%
+      mutate(outcome = var)
+  } else {
+    return(NULL)
+  }
+}
+
+
+#ordinal model
+
+run_model_ordinal <- function(peptide, var) {
+  
+  vars <- c(var, peptide)
+  model_data <- data_z[, vars]
+
+  # Drop rows with NA / NaN
+  model_data <- model_data %>%
+    filter(if_all(everything(), ~ !is.na(.) & !is.nan(.))) %>%
+    mutate(
+      across(all_of(peptide), as.numeric),
+      !!var := as.ordered(.data[[var]])
+    )
+
+  # Skip if outcome has < 2 levels after filtering
+  if (nlevels(model_data[[var]]) < 2) return(NULL)
+
+  # Fit ordinal model
+  formula <- as.formula(paste(var, "~", peptide))
+
+  model <- tryCatch(
+    MASS::polr(formula, data = model_data, Hess = TRUE),
+    error = function(e) {
+      message("Error for peptide ", peptide, ": ", e$message)
+      return(NULL)
+    }
+  )
+
+  if (!is.null(model)) {
+    broom::tidy(model) %>%
+      filter(term == peptide) %>%
+      mutate(
+        p.value = 2 * pnorm(abs(statistic), lower.tail = FALSE),
+        outcome = var)
+  } else {
+    return(NULL)
+  }
+}
+
+```
+
+
+```{r braaksc}
+
+results_braaksc_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "braaksc") |>
+  bind_rows())
+
+results_braaksc_adj_holm <- results_braaksc_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+
+``` {r tangles}
+
+results_tangles_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "tangles") |>
+  bind_rows())
+
+results_tangles_adj_holm <- results_tangles_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+``` {r amyloid}
+
+results_amyloid_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "amyloid") |>
+  bind_rows())
+
+results_amyloid_adj_holm <- results_amyloid_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r CERAD}
+
+results_ceradsc_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "ceradsc_inv") |>
+  bind_rows())
+
+results_ceradsc_adj_holm <- results_ceradsc_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+
+``` {r LBD}
+
+results_lbd_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "dlbdx") |>
+  bind_rows())
+
+results_lbd_adj_holm <- results_lbd_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r CAA}
+
+results_caa_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "caa_4gp") |>
+  bind_rows())
+
+results_caa_adj_holm <- results_caa_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+
+```
+
+``` {r TDP-43}
+
+results_tdp43_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "tdp_st4") |>
+  bind_rows())
+
+results_tdp43_adj_holm <- results_tdp43_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+library(broom)
+
+results_tdp43_adj_holm <- lapply(
+  setNames(paste0(synaptic_peptide_names, "_adj"),
+           paste0(synaptic_peptide_names, "_adj")),
+  function(peptide) {
+    formula <- as.formula(paste("tdp_st4 ~", peptide))
+    model <- glm(formula,
+                 data = data_z,
+                 family = binomial())
+    tidy(model)[2, c("estimate", "std.error", "statistic", "p.value")]
+  }
+) |>
+  bind_rows(.id = "peptide") |>
+  mutate(p_holm = p.adjust(p.value, method = "holm")) |>
+  arrange(p.value)
+
+results_tdp43_adj_holm <- results_tdp43_adj_holm |>
+  rename(term = peptide)
+
+```
+
+
+```{r vasc-comp}
+results_vasc_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "vascular_composite") |>
+  bind_rows())
+
+results_vasc_adj_holm <- results_vasc_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+
+```{r cog}
+
+results_cog_adj <- suppressWarnings(lapply(paste0(synaptic_peptide_names, "_adj"), run_model, var = "cogn_global") |>
+  bind_rows())
+
+results_cog_adj_holm <- results_cog_adj |>
+  mutate(p_holm = p.adjust(p.value, method = 'holm')) |>
+  arrange(p.value)
+
+```
+
+``` {r cog top 15}
+
+cog_top15_peptides <- results_cog_adj_holm |>
+  filter(p.value < 0.01) |>
+  arrange(p.value) |>
+  slice_head(n = 15) |>
+  pull(term)
+
+cog_top15_peptides <- sub("_adj$", "", cog_top15_peptides)
+
+```
+
+``` {r all_results}
+
+all_results <- bind_rows(
+  results_cog_adj_holm %>% mutate(outcome = "Cognition"),
+  results_braaksc_adj_holm %>% mutate(outcome = "Braak"),
+  results_tangles_adj_holm %>% mutate(outcome = "Tangles"),
+  results_amyloid_adj_holm %>% mutate(outcome = "Amyloid"),
+  results_ceradsc_adj_holm %>% mutate(outcome = "CERAD"),
+  results_caa_adj_holm %>% mutate(outcome = "CAA"),
+  results_lbd_adj_holm %>% mutate(outcome = "LBD"),
+  results_vasc_adj_holm %>% mutate(outcome = "Vascular Composite"),
+  results_tdp43_adj_holm %>% mutate(outcome = "TDP-43")
+)
+
+
+all_results$coef.type <- NULL
+
+all_results <- all_results |>
+  mutate(term = str_remove(term, "_adj$"))
+```
+
+``` {r effect size matrix}
+
+effect_mat <- all_results %>%
+  filter(term %in% cog_top15_peptides) %>%
+  select(term, outcome, estimate) %>%
+  pivot_wider(names_from = outcome, values_from = estimate) %>%
+  column_to_rownames("term") %>%
+  as.matrix()
+
+```
+
+``` {r significance annotation matrix}
+
+sig_mat <- all_results %>%
+  filter(term %in% cog_top15_peptides) %>%
+  select(term, outcome, p.value) %>%
+  mutate(sig = p.value < 0.05) %>%
+  select(-p.value) %>%
+  pivot_wider(names_from = outcome, values_from = sig) %>%
+  column_to_rownames("term") %>%
+  as.matrix()
+
+
+```
+
+``` {r color scale}
+
+install.packages("BiocManager")
+BiocManager::install("ComplexHeatmap")
+install.packages('circlize')
+library(circlize)
+library(ComplexHeatmap)
+
+
+col_fun_main <- colorRamp2(
+  c(-2, 0, 2),
+  c("#2166AC", "white", "#B2182B")
+)
+
+col_fun_cog <- colorRamp2(
+  c(-0.5, 0, 0.5),
+  c("#2166AC", "white", "#B2182B")
+)
+
+
+
+```
+
+``` {r split-matrix}
+
+effect_cog  <- effect_mat[, "Cognition", drop = FALSE]
+effect_rest <- effect_mat[, colnames(effect_mat) != "Cognition"]
+
+sig_cog  <- sig_mat[, "Cognition", drop = FALSE]
+sig_rest <- sig_mat[, colnames(sig_mat) != "Cognition"]
+
+
+
+```
+
+
+``` {r combined-heatmap}
+
+ht_cog <- Heatmap(
+  effect_cog,
+  name = "Effect size (β)\nCognition",
+  col = col_fun_cog,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_names = TRUE,
+  row_names_side = "left",
+
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    if (!is.na(sig_cog[i, j]) && sig_cog[i, j]) {
+      grid::grid.text("*", x, y, gp = grid::gpar(fontsize = 14))
+    }
+  }
+)
+
+ht_rest <- Heatmap(
+  effect_rest,
+  name = "Effect size (β)\nPathologies",
+  col = col_fun_main,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_names = FALSE,
+
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    if (!is.na(sig_rest[i, j]) && sig_rest[i, j]) {
+      grid::grid.text("*", x, y, gp = grid::gpar(fontsize = 14))
+    }
+  }
+)
+
+ht_combined <- ht_cog + ht_rest
+
+png("heatmap_combined.png", 
+    width = 3000, height = 1800, res = 300)
+
+draw(
+  ht_combined,
+  column_title = "Cognition-associated peptides across neuropathologies",
+  heatmap_legend_side = "right"
+)
+
+dev.off()
+
+```
+
+
+``` {r single-heatmap}
+
+ht <- Heatmap(
+  effect_mat,
+  name = "Effect size (β)",
+  col = col_fun_main,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_names = TRUE,
+  row_names_side = 'left',
+  show_column_names = TRUE,
+
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    if (!is.na(sig_mat[i, j]) && sig_mat[i, j]) {
+      grid::grid.text("*", x, y, gp = grid::gpar(fontsize = 14))
+    }
+  }
+)
+
+draw(ht, column_title = "Cognition-associated peptides across neuropathologies")
+
+```

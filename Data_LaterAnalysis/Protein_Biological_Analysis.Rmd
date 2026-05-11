@@ -1,0 +1,109 @@
+---
+title: "Protein_Biological_Analysis"
+output: html_document
+date: "2025-12-16"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r data-loading}
+
+#Add/take out Nominal in csv title for comparison between nominal and Holm-corrected
+
+data <- read.csv('Nominal_Significant_Peptide_Isoforms.csv')
+
+SRM_Runs1_2 <- read.csv('SRM_Runs_1_and_2.csv')
+
+SRM_Run3 <- read.csv('SRM_Run_3.csv')
+
+```
+
+
+```{r merge}
+
+data_Runs1_2 <- left_join(data, SRM_Runs1_2, join_by(peptide == Peptide.ID))
+
+full_data <- left_join(data_Runs1_2, SRM_Run3, join_by(peptide == gene.symbol))
+
+```
+
+``` {r column combining}
+
+full_data <- full_data |>
+  mutate(name = coalesce(Target, gene.name),
+         protein.function = coalesce(Main.function, Main.biological.process),
+         localization = coalesce(Subcellular.localisation, Main.subcellular.localization))
+
+
+```
+
+``` {r make values lowercase}
+
+full_data$name <- tolower(full_data$name)
+full_data$protein.function <- tolower(full_data$protein.function)
+full_data$localization <- tolower(full_data$localization)
+
+
+```
+
+
+``` {r small-dataset}
+
+small_data <- full_data[, c('pathology', 'peptide', 'name', 'protein.function', 'localization')]
+
+
+small_data$localization[small_data$localization == 'p-membrane' | small_data$localization == 'v-membrane'] <- 'membrane'
+
+small_data$localization[small_data$localization == 'endoplasmic reticulum'] <- 'er/golgi'
+
+```
+
+
+``` {r heatmap-localization}
+
+loc_data <- small_data |>
+  count(pathology, localization)
+
+p1 <- ggplot(loc_data, aes(pathology, localization, fill = n)) +
+  geom_tile() +
+  geom_text(aes(label = n), color = "black", size = 3) +
+  ggtitle('Localization of Nominal Peptides') +
+  scale_fill_gradient(low = "white", high = "#B2182B") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+
+```
+
+
+``` {r heatmap-function}
+
+func_count_data <- small_data |>
+  count(pathology, protein.function)
+
+p2 <- ggplot(func_count_data, aes(pathology, protein.function, fill = n)) +
+  geom_tile() +
+  geom_text(aes(label = n), color = "black", size = 3) +
+  ggtitle('Functions of Nominal Peptides') +
+  scale_fill_gradient(low = "white", high = "#B2182B") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+
+
+```
+
+``` {r combined}
+
+library(patchwork)
+
+combined_plot <- p1 + p2
+
+ggsave("two_heatmaps_nominal.png", combined_plot, width = 10, height = 5, dpi = 300)
+
+```
+

@@ -1,0 +1,184 @@
+---
+title: "Pathology-Peptide Linearity"
+output: html_document
+date: "2025-11-20"
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(dplyr)
+
+
+```
+
+```{r data}
+
+data <- read.csv('demo_adj_data_unique.csv')
+
+data$braaksc <- as.factor(data$braaksc)
+
+data$ceradsc <- factor(data$ceradsc,
+                          levels = c(1:4),
+                          labels =c('No AD',
+                                    'possible AD',
+                                    'probable AD',
+                                    'definite AD'))
+
+data$dlbdx <- as.factor(data$dlbdx)
+  
+```
+
+
+```{r significant-peptides}
+
+braaksc_significant_peptides <- c("NPTX2_4_adj", "NPTX2_6_adj", "STX1A_1_adj", "SEPT5_1_adj", "SEPT5_2_adj", "SNAP25_2_adj", "NPTX2_5_adj", "MAPK1_3_adj", "MAPK1_2_adj", "SYT12_1_adj", "NCDN_1_adj", "SYNPO_2_adj", "STX1A_2_adj", "MAPK1_1_adj", "SNAP25_6_adj", "SYNPO_3_adj", "ARC_1_adj", "HOMER1_1_adj", "SNAP25_1_adj", "RAB6B_1_adj", "SYNPO_1_adj")
+
+tangles_significant_peptides <- c("NPTX2_6_adj", "NPTX2_4_adj", "NPTX2_5_adj", "MAPK1_2_adj", "GRM1_3_adj", "SEPT5_1_adj", "SNAP25_2_adj", "STX1A_1_adj", "MAPK1_3_adj", "SEPT5_2_adj", "MAPK1_1_adj", "SNAP25_1_adj", "SYT12_1_adj", "SYNPO_3_adj", "EFNB1_2_adj", "STXBP1_2_adj", "ARC_1_adj", "CADM3_3_adj", "STX1B_1_adj", "GRIK2_2_adj", "STX1A_2_adj", "SYNPO_1_adj", "RAB6B_1_adj", "SNAP25_4_adj", "CADM3_1_adj")
+
+amyloid_significant_peptides <- c("STX1A_1_adj", "NPTX2_4_adj", "NPTX2_6_adj", "SNAP25_2_adj", "STX1A_2_adj", "SYT12_1_adj", "STXBP1_1_adj", "STXBP1_2_adj", "NCDN_1_adj", "SNAP25_7_adj", "SEPT5_2_adj", "SEPT5_1_adj", "NPTX2_5_adj", "MAPK1_3_adj", "MAPK1_2_adj", "STX1B_2_adj", "NPTX2_2_adj", "STXBP1_3_adj", "SYNPO_2_adj", "SYNPO_3_adj", "VAPB_2_adj", "SNAP25_1_adj", "SNAP25_6_adj", "STX1B_1_adj", "GRM1_3_adj", "SNAP25_3_adj", "VCP_1_adj"
+)
+
+cerad_significant_peptides <- c("NPTX2_6_adj", "NPTX2_4_adj", "NPTX2_5_adj", "STX1A_1_adj", "SNAP25_2_adj", "SYT12_1_adj", "MAPK1_2_adj", "STX1A_2_adj", "NCDN_1_adj", "MAPK1_3_adj", "SNAP25_7_adj", "VAPB_2_adj", "SNAP25_6_adj", "STXBP1_1_adj", "SEPT5_1_adj", "SYNPO_3_adj", "NPTX2_2_adj", "STXBP1_2_adj", "SNAP25_1_adj", "VCP_1_adj", "SYNPO_1_adj" ,"SHANK2_2_adj", "SYNPO_2_adj")
+
+lbd_significant_peptides <- c("SHANK2_2_adj", "SYNGAP1_3_adj", "SYNGAP1_2_adj", "SYNPO_3_adj", "NPTX2_4_adj"
+)
+
+athero_significant_peptides <- c("RAB6B_3_adj")
+
+globalcog_significant_peptides <- c("NPTX2_4_adj", "NPTX2_5_adj" , "NPTX2_6_adj", "MAPK1_2_adj")
+
+
+```
+
+
+``` {r with-jitter}
+
+plot_linear_relationship_jitter <- function(peptide, pathology, data) {
+  
+  #class of pathology variable
+  x_var <- data[[pathology]]
+  is_ordinal <- is.factor(x_var) | is.ordered(x_var)
+  
+  #plot
+  p <- ggplot(data, aes(x = .data[[pathology]], y = .data[[peptide]]))
+  
+  # Add correct point geometry
+  if (is_ordinal) {
+    p <- p + geom_jitter(width = 0.2, alpha = 0.6)
+  } else {
+    p <- p + geom_point(alpha = 0.6)
+  }
+  
+  # Add LM + LOESS lines
+  p <- p +
+    geom_smooth(method = "lm", se = FALSE, color = "blue", size = 1) +
+    geom_smooth(method = "loess", se = FALSE, color = "red", linetype = "dashed") +
+    labs(
+      title = paste(peptide, "vs", pathology),
+      x = pathology,
+      y = peptide
+    ) +
+    theme_minimal(base_size = 14)
+  
+  return(p)
+}
+
+
+```
+
+
+``` {r tangles-linearity}
+
+for (i in tangles_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'tangles',
+      data = data
+    )
+  )
+  )
+}
+
+```
+
+``` {r amyloid-linearity}
+
+for (i in amyloid_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'amyloid',
+      data = data
+    )
+  )
+  )
+}
+
+```
+
+```{r braaksc-linearity}
+
+for (i in braaksc_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'braaksc',
+      data = data
+    )
+  )
+  )
+}
+
+```
+
+``` {r cerad-linearity}
+
+
+for (i in cerad_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'ceradsc',
+      data = data
+    )
+  )
+  )
+}
+
+
+```
+
+```  {r lbd-linearity}
+
+for (i in lbd_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'dlbdx',
+      data = data
+    )
+  )
+  )
+}
+
+
+
+```
+
+
+``` {r globalcog-linearity}
+
+for (i in globalcog_significant_peptides) {
+  suppressWarnings(print(
+    plot_linear_relationship_jitter(
+      peptide = i,
+      pathology = 'cogn_global',
+      data = data
+    )
+  )
+  )
+}
+
+```
